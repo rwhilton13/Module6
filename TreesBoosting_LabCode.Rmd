@@ -1,0 +1,290 @@
+---
+title: "Module 6 Lab Code"
+author: "Ryan Hilton"
+date: "3/18/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#### Lab Session on Module 6 - Trees and Boosting
+## Chapter 8 Lab: Decision Trees
+
+########
+## 1. Fitting Classification Trees
+
+```{r}
+## install packs first
+library(tree) #class and reg trees
+library(ISLR) #if needed
+```
+
+```{r}
+##dataset
+attach(Carseats)
+#detach(Carseats)
+#View(Carseats)
+```
+
+#make a binary of Sales fro classification problem
+#make sure take out High.1
+```{r}
+#Carseats[,-21]
+High=factor(ifelse(Sales<=8,"No","Yes"))
+Carseats=data.frame(Carseats,High)
+```
+
+##build a tree model
+#tree() is similar to lm()
+```{r}
+?tree
+tree.carseats=tree(High~.-Sales,Carseats)
+```
+
+#see performances and details
+```{r}
+summary(tree.carseats)
+
+#see trees
+plot(tree.carseats)
+text(tree.carseats,pretty=0) #include cat names
+
+#rules
+tree.carseats
+```
+
+##train-test nd predict
+```{r}
+set.seed(99)
+train=sample(1:nrow(Carseats), 200)
+Carseats.test=Carseats[-train,]
+High.test=High[-train]
+```
+
+#fit the model on train
+```{r}
+tree.carseats=tree(High~.-Sales,Carseats,subset=train)
+```
+
+
+#predict the test
+```{r}
+tree.pred=predict(tree.carseats,Carseats.test,type="class")
+tree.pred
+```
+
+#confusion matrix:put first true classes
+```{r}
+table(High.test, tree.pred) #(?+?)/?
+```
+
+#get accuracy score
+(?+?)/?
+
+##CV, k i s alpha in pruning cost fn
+```{r}
+?cv.tree
+```
+
+#run the example from the help doc
+```{r}
+set.seed(99)
+cv.carseats=cv.tree(tree.carseats,FUN=prune.misclass) #change FUN to other metrics
+names(cv.carseats)
+cv.carseats
+```
+
+#plots
+```{r}
+par(mfrow=c(1,2))
+plot(cv.carseats$size,cv.carseats$dev,type="b")
+plot(cv.carseats$k,cv.carseats$dev,type="b")
+```
+
+##prune and best 4 nodes
+#apply prune.misclass to prune
+```{r}
+prune.carseats=prune.misclass(tree.carseats,best=4)
+plot(prune.carseats)
+text(prune.carseats,pretty=0)
+#is this pruned tree better?
+```
+
+##predict
+```{r}
+tree.pred=predict(prune.carseats,Carseats.test,type="class")
+table(tree.pred,High.test)
+```
+
+#get the accuracy score
+?
+
+##best 15 nodes in the prune
+```{r}
+prune.carseats=prune.misclass(tree.carseats,best=15)
+plot(prune.carseats)
+text(prune.carseats,pretty=0)
+```
+
+```{r}
+tree.pred=predict(prune.carseats,Carseats.test,type="class")
+table(tree.pred,High.test)
+```
+
+#get the accuracy score
+?
+
+#try more useful codes here
+
+  
+  
+########
+## 2. Fitting Regression Trees
+```{r}
+library(MASS)
+attach(Boston)
+set.seed(99)
+train = sample(1:nrow(Boston), nrow(Boston)/2)
+```
+
+#fit regression tree
+```{r}
+tree.boston=tree(medv~.,Boston,subset=train)
+summary(tree.boston)
+```
+
+#plot
+```{r}
+plot(tree.boston)
+text(tree.boston,pretty=0)
+```
+
+#does pruning improve results?
+```{r}
+cv.boston=cv.tree(tree.boston)
+plot(cv.boston$size,cv.boston$dev,type='b')
+```
+
+#lets use best s nodes based on the nodes plot above
+```{r}
+prune.boston=prune.tree(tree.boston,best=5)
+plot(prune.boston)
+text(prune.boston,pretty=0)
+```
+
+##predict
+```{r}
+yhat=predict(tree.boston,newdata=Boston[-train,])
+boston.test=Boston[-train,"medv"]
+plot(yhat,boston.test)
+abline(0,1)
+
+mean((yhat-boston.test)^2)
+```
+
+########
+## Bagging and Random Forests
+```{r}
+library(randomForest)
+?randomForest
+```
+
+#when m=p, this is just a random forest
+```{r}
+set.seed(99)
+bag.boston=randomForest(medv~.,data=Boston,subset=train,
+                        mtry=13,
+                        importance=TRUE)
+bag.boston
+```
+
+#discuss the input, arguments and output
+
+#predict
+```{r}
+yhat.bag = predict(bag.boston,newdata=Boston[-train,])
+plot(yhat.bag, boston.test)
+abline(0,1)
+mean((yhat.bag-boston.test)^2)
+```
+
+#try different number of trees
+```{r}
+bag.boston=randomForest(medv~.,data=Boston,subset=train,mtry=13,ntree=25)
+yhat.bag = predict(bag.boston,newdata=Boston[-train,])
+mean((yhat.bag-boston.test)^2)
+```
+
+#get importance analysis and plot
+```{r}
+importance(bag.boston)
+varImpPlot(bag.boston)
+```
+
+#try p=sqrt of p
+```{r}
+set.seed(99)
+rf.boston=randomForest(medv~.,data=Boston,subset=train,
+                       mtry=6,
+                       importance=TRUE)
+yhat.rf = predict(rf.boston,newdata=Boston[-train,])
+mean((yhat.rf-boston.test)^2)
+```
+
+#importance
+```{r}
+importance(rf.boston)
+varImpPlot(rf.boston)
+```
+
+#########
+### 3. Boosting
+```{r}
+library(gbm)
+?gbm
+```
+
+#fit
+#when regression problem, use distribution="gaussian"
+#when classification problem, use distribution="bernoulli"
+```{r}
+set.seed(99)
+boost.boston=gbm(medv~.,data=Boston[train,],
+                 distribution="gaussian", #bernoulli
+                 n.trees=5000,
+                 interaction.depth=4)
+summary(boost.boston)
+```
+
+#plots
+```{r}
+par(mfrow=c(1,2))
+plot(boost.boston,i="rm")
+plot(boost.boston,i="lstat")
+
+#
+plot(boost.boston)
+```
+
+#predict
+```{r}
+yhat.boost=predict(boost.boston,newdata=Boston[-train,],n.trees=5000)
+mean((yhat.boost-boston.test)^2)
+```
+
+#shrinkage is lambda in the boost algorithm
+```{r}
+boost.boston=gbm(medv~.,data=Boston[train,],
+                 distribution="gaussian",
+                 n.trees=5000,
+                 interaction.depth=4,
+                 shrinkage=0.2,
+                 verbose=F)
+yhat.boost=predict(boost.boston,newdata=Boston[-train,],n.trees=5000)
+mean((yhat.boost-boston.test)^2)
+```
+
+#ideally: try which lambda gives better results: grid or random search with CV.
+

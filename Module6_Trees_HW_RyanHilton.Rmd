@@ -1,0 +1,402 @@
+---
+title: "Module 6 Assignment on Trees and Boosting"
+author: "Ryan Hilton // Undergraduate Student || Avery Girsky // Undergraduate Student"
+date: "Due Date: April 1st, 2021"
+#output: pdf_document
+output:
+  pdf_document: default
+  df_print: paged
+  #html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, tidy=TRUE, tidy.opts=list(width.cutoff=50))
+```
+
+***
+## Module Assignment
+
+You will apply tree, bagging, random forests, and boosting methods to the `Caravan` data set with 5,822 observations on 86 variables with a binary response variable. This is a classification problem.
+
+The data contains 5,822 real customer records. Each record consists of 86 variables, containing socio-demographic data (variables 1-43) and product ownership (variables 44-86). The socio-demographic data is derived from zip codes. All customers living in areas with the same zip code have the same socio-demographic attributes. Variable 86 (Purchase) is the target/response variable, indicating whether the customer purchased a caravan insurance policy. Further information on the individual variables can be obtained at http://www.liacs.nl/~putten/library/cc2000/data.html
+
+Fit the models on the training set (as the split shown at the bottom codes) and to evaluate their performance on the test set. Use the R lab codes. Feel free to use other packs (caret) and k-fold methods if you like.
+
+
+***
+## Q1) (*Modeling*) 
+
+a. Create a training set consisting from random 4,000 observations (shuffled and then split) with the seed with `set.seed(99)` and a test set consisting of the remaining observations (see the code at the bottom). Do a brief EDA on the target variable. Overall, describe the data. Do you think a samll number of predictors suffice to get the good results?
+
+b. Fit a `logistic regression` to the training set with `Purchase` as the response and all the other variables as predictors. Report the $Accuracy$ score on the train and test data sets. Discuss if any issues observed.
+
+c. Fit a `classification tree` model to the training set with `Purchase` as the response and all the other variables as predictors. Use cross-validation `cv.tree()` in order to determine the optimal level of tree complexity and prune the tree. Then, report the $Accuracy$ score on the train and test data sets. If the R command gives errors, make necessary fixes to run the model. Discuss if any issues observed.
+
+d. Use the `bagging approach` on the classification trees model to the training set with `Purchase` as the response and all the other variables as predictors. Report the $Accuracy$ score on the train and test data sets. Discuss if any issues observed.
+
+e. Use the `random forests` on the classification trees model to the training set with `Purchase` as the response and all the other variables as predictors. Find the optimal `mtry` and `ntree` with a sophisticated choice (no mandatory to make cross-validation, just try some) and report these. Report the $Accuracy$ score on the train and test data sets. Discuss if any issues observed.
+
+
+f. Perform `boosting` on the training set with `Purchase` as the response and all the other variables as predictors. Find the optimal `shrinkage` value and `ntree` with a sophisticated choice (no mandatory to make cross-validation, just try some) and report these. Report the $Accuracy$ score on the train and test data sets. Discuss if any issues observed.
+
+
+***
+## Q2) (*Discussion and Evaluation*) 
+
+a. Overall, compare the five models (parts b-f) in Question#1. Which one is the best  in terms of $Accuracy$? Also, what fraction of the people predicted to make a purchase do in fact make one for on each model (use test data, what is called this score?)? Accuracy or this score: which one do you prefer to evaluate models? 
+
+b. Determine which four features/predictors are the most important in the `random forests` and `boosting` models fitted. Include graphs and comments. Are they same features? Why? 
+
+c. Joe claimed that his model accuracy on the prediction for the same problem is 94%. Do you think this is a good model? Explain.
+
+d. (BONUS) How to deal with `imbalanced data` in modeling? Include your solution and one of model's test result to handle this issue. Did it improve?
+
+e. (BONUS) What happens to the results if you scale the features? Discuss.
+
+\newpage
+
+***
+
+## Your Solutions
+
+Q1) 
+```{r}
+#import packs and dataset
+library(ISLR)
+library(MASS)
+library(class)
+library(kableExtra)
+library(caret)
+library(car)
+library(tree)
+library(randomForest)
+library(gbm)
+```
+
+```{r}
+#EDA
+#attach(Caravan)
+#detach(Caravan)
+#View(Caravan)
+#dim(Caravan) #5822x86
+#colnames(Caravan)
+#str(Caravan)
+#summary(Caravan)
+```
+
+Part a:
+```{r}
+#EDA on target variable
+
+#Caravan$Purchase
+table(Caravan$Purchase)
+#imbalanced data issue AND sparsity
+prop.table(table(Caravan$Purchase))
+```
+
+```{r}
+#recode the target variable: you will need one of them for models, just aware
+Caravan$Purchase = ifelse(Caravan$Purchase == "Yes", 1, 0)
+#Caravan$Purchase = ifelse(Caravan$Purchase == 1, "Yes", "No")
+#Caravan$Purchase
+```
+
+```{r}
+#shuffle, split train and test
+set.seed(99)
+rows <- sample(nrow(Caravan))
+train = rows[1:4000] #1:4000
+#split
+Caravan.train = Caravan[train, ]
+#train target
+table(Caravan.train$Purchase)
+#split
+Caravan.test = Caravan[-train, ]
+#test target
+table(Caravan.test$Purchase)
+#dims
+dim(Caravan.train) #4000x86
+dim(Caravan.test) #1822x86
+```
+
+```{r}
+# #if needed, apply scale (min-max would be preferred) except for the target and categoricals
+# #just to show: ?scale
+# #then bring back the target variable located at 86th column
+# Caravan_sc1=scale(Caravan[,-86])
+# summary(Caravan_sc1)
+# #min-max scaling on numerical and dummies
+# normalize <- function(x){
+#     return((x - min(x)) /(max(x)-min(x)))
+# }
+# Caravan_sc2=as.data.frame(apply(Caravan[,1:85],2, FUN=normalize))
+# summary(Caravan_sc2)
+# #if want to replace the original features with scaled ones
+# Caravan[,1:85] = Caravan_sc2
+# summary(Caravan)
+```
+
+***
+Part b:
+```{r}
+log.reg = glm(Purchase ~., family=binomial, data=Caravan.train)
+summary(log.reg)
+#removing AZEILPL
+```
+
+```{r}
+log.reg = glm(Purchase ~.-AZEILPL-MHKOOP-MZFONDS-PGEZONG-PBESAUT-PINBOED-MOSTYPE-PVRAAUT-PWERKT-PWAPART-MOPLLAAG-MFWEKIND-PBROM-MRELGE-PMOTSCO-PWALAND-AAANHANG-PTRACTOR-MAUT1-AWAOREG-ABYSTAND-MSKA-MGODPR-MINKM30-MBERMIDD-AFIETS-APLEZIER, family=binomial, data=Caravan.train)
+cat('\n')
+round(vif(log.reg),4)
+```
+
+```{r}
+#summary(log.reg)
+lr.probs.tr=predict(log.reg,Caravan.train,type="response")
+lr.pred.tr=rep(0,nrow(Caravan.train))
+lr.pred.tr[lr.probs.tr>.5]=1
+lr.train.error = mean(lr.pred.tr!=Caravan.train$Purchase)
+lr.probs.test=predict(log.reg,Caravan.test,type="response")
+lr.pred.test=rep(0,nrow(Caravan.test))
+lr.pred.test[lr.probs.test>.5]=1
+lr.test.error = mean(lr.pred.test!=Caravan.test$Purchase)
+cat("Logistic Regression Train Error: ",lr.train.error,"\n")
+cat("Logistic Regression Test Error: ",lr.test.error,"\n")
+```
+
+```{r}
+lr.cm = table(Caravan.test$Purchase, lr.pred.test)
+lr.cm
+lr.accuracy = (lr.cm[1,1] + lr.cm[2,2]) / (length(Caravan.test$Purchase))
+cat("Logistic Accuracy: ",lr.accuracy,"\n")
+```
+
+***
+Part c:
+```{r}
+Caravan.train$Purchase = factor(ifelse(Caravan.train$Purchase == 1, "Yes", "No"))
+#Caravan.test$Purchase = ifelse(Caravan.test$Purchase == 1, "Yes", "No")
+```
+
+```{r}
+?tree
+```
+
+```{r}
+tree.caravan=tree(Purchase~.-AZEILPL-MHKOOP-MZFONDS-PGEZONG-PBESAUT-PINBOED-MOSTYPE-PVRAAUT-PWERKT-PWAPART-MOPLLAAG-MFWEKIND-PBROM-MRELGE-PMOTSCO-PWALAND-AAANHANG-PTRACTOR-MAUT1-AWAOREG-ABYSTAND-MSKA-MGODPR-MINKM30-MBERMIDD-AFIETS-APLEZIER, data=Caravan.train)
+```
+
+```{r}
+tree.caravan
+```
+
+```{r}
+plot(tree.caravan)
+text(tree.caravan, pretty=0)
+```
+
+
+```{r}
+set.seed(99)
+cv.caravan=cv.tree(tree.caravan,FUN=prune.misclass) #change to prune.misclass?
+names(cv.caravan)
+cv.caravan
+```
+
+#plots
+```{r}
+par(mfrow=c(1,2))
+plot(cv.caravan$size,cv.caravan$dev,type="b")
+plot(cv.caravan$k,cv.caravan$dev,type="b")
+```
+
+##prune and best 4 nodes
+#apply prune.misclass to prune
+```{r}
+prune.caravan=prune.misclass(tree.caravan,best=5)
+plot(prune.caravan)
+text(prune.caravan,pretty=0)
+#is this pruned tree better?
+```
+
+##predict
+```{r}
+tree.pred=predict(prune.caravan,Caravan.test,type="class")
+tree.cm = table(Caravan.test$Purchase,tree.pred)
+tree.cm
+
+tree.accuracy = (tree.cm[1,1] + tree.cm[2,2]) / (length(Caravan.test$Purchase))
+cat("Classification Tree Accuracy: ",tree.accuracy,"\n")
+```
+
+```{r}
+#If you predicted no for every observation
+1710/(1710+112)
+```
+
+***
+Part d:
+```{r}
+set.seed(99)
+bag.caravan=randomForest(Purchase~.,data=Caravan.train, mtry = 85, importance=TRUE)
+bag.caravan
+```
+
+```{r}
+importance(bag.caravan)
+varImpPlot(bag.caravan)
+```
+
+```{r}
+#bag.caravan$confusion
+#bag.caravan$importance
+bag.pred=predict(bag.caravan,Caravan.test,type="class")
+bag.cm = table(Caravan.test$Purchase,bag.pred)
+bag.cm
+
+bag.accuracy = (bag.cm[1,1] + bag.cm[2,2]) / (length(Caravan.test$Purchase))
+cat("Classification Tree Accuracy: ",bag.accuracy,"\n")
+```
+
+```{r}
+set.seed(99)
+bag.caravan=randomForest(Purchase~.-AZEILPL-MHKOOP-MZFONDS-PGEZONG-PBESAUT-PINBOED-MOSTYPE-PVRAAUT-PWERKT-PWAPART-MOPLLAAG-MFWEKIND-PBROM-MRELGE-PMOTSCO-PWALAND-AAANHANG-PTRACTOR-MAUT1-AWAOREG-ABYSTAND-MSKA-MGODPR-MINKM30-MBERMIDD-AFIETS-APLEZIER,data=Caravan.train, mtry = 58, importance=TRUE)
+bag.caravan
+```
+
+```{r}
+importance(bag.caravan)
+varImpPlot(bag.caravan)
+```
+
+```{r}
+#bag.caravan$confusion
+#bag.caravan$importance
+bag.pred=predict(bag.caravan,Caravan.test,type="class")
+bag.cm = table(Caravan.test$Purchase,bag.pred)
+bag.cm
+
+bag.accuracy = (bag.cm[1,1] + bag.cm[2,2]) / (length(Caravan.test$Purchase))
+cat("Classification Tree Accuracy: ",bag.accuracy,"\n")
+```
+
+***
+Part e:
+```{r}
+set.seed(99)
+forest.caravan=randomForest(Purchase~.,data=Caravan.train, ntree = 1000)
+forest.caravan
+```
+
+```{r}
+importance(forest.caravan)
+varImpPlot(forest.caravan)
+```
+
+```{r}
+#forest.caravan$confusion
+#forest.caravan$importance
+forest.pred=predict(forest.caravan,Caravan.test,type="class")
+forest.cm = table(Caravan.test$Purchase,forest.pred)
+forest.cm
+
+forest.accuracy = (forest.cm[1,1] + forest.cm[2,2]) / (length(Caravan.test$Purchase))
+cat("Classification Tree Accuracy: ",forest.accuracy,"\n")
+```
+
+
+```{r}
+set.seed(99)
+forest.caravan=randomForest(Purchase~.-AZEILPL-MHKOOP-MZFONDS-PGEZONG-PBESAUT-PINBOED-MOSTYPE-PVRAAUT-PWERKT-PWAPART-MOPLLAAG-MFWEKIND-PBROM-MRELGE-PMOTSCO-PWALAND-AAANHANG-PTRACTOR-MAUT1-AWAOREG-ABYSTAND-MSKA-MGODPR-MINKM30-MBERMIDD-AFIETS-APLEZIER,data=Caravan.train, ntree = 1000)
+forest.caravan
+```
+
+```{r}
+importance(forest.caravan)
+varImpPlot(forest.caravan)
+```
+
+```{r}
+#forest.caravan$confusion
+#forest.caravan$importance
+forest.pred=predict(forest.caravan,Caravan.test,type="class")
+forest.cm = table(Caravan.test$Purchase,forest.pred)
+forest.cm
+
+forest.accuracy = (forest.cm[1,1] + forest.cm[2,2]) / (length(Caravan.test$Purchase))
+cat("Classification Tree Accuracy: ",forest.accuracy,"\n")
+```
+
+***
+Part f:
+```{r}
+Caravan.train$Purchase = ifelse(Caravan.train$Purchase == "Yes", 1, 0)
+```
+
+```{r}
+set.seed(99)
+boost.caravan=gbm(Purchase~.,data=Caravan.train,
+                 distribution="bernoulli",
+                 n.trees=5000,
+                 interaction.depth=4)
+summary(boost.caravan)
+```
+
+```{r}
+boost.caravan=gbm(Purchase~.,data=Caravan.train,
+                 distribution="bernoulli",
+                 n.trees=5000,
+                 interaction.depth=4,
+                 shrinkage=0.2,
+                 verbose=F)
+summary(boost.caravan)
+```
+
+
+***
+
+
+\newpage
+
+## Q2) 
+
+Part a:
+
+
+***
+Part b:
+
+
+***
+Part c:
+
+
+***
+Part d - BONUS:
+
+***
+Part e - BONUS:
+
+***
+\newpage
+
+
+
+### Write comments, questions: ...
+
+
+***
+I hereby write and submit my solutions without violating the academic honesty and integrity. If not, I accept the consequences. 
+
+### List the fiends you worked with (name, last name): ...
+
+### Disclose the resources or persons if you get any help: ...
+
+### How long did the assignment solutions take?: ...
+
+
+***
+## References
+...
+
+
