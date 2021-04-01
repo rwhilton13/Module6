@@ -1,0 +1,801 @@
+---
+title: "Module 6 Assignment on Trees and Boosting"
+author: "Ryan Hilton // Undergraduate Student || Avery Girsky // Undergraduate Student"
+date: "Due Date: April 1st, 2021"
+#output: pdf_document
+output:
+  pdf_document: default
+  df_print: paged
+  #html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, tidy=TRUE, tidy.opts=list(width.cutoff=50))
+```
+
+***
+## Module Assignment
+
+You will apply tree, bagging, random forests, and boosting methods to the `Caravan` data set with 5,822 observations on 86 variables with a binary response variable. This is a classification problem.
+
+The data contains 5,822 real customer records. Each record consists of 86 variables, containing socio-demographic data (variables 1-43) and product ownership (variables 44-86). The socio-demographic data is derived from zip codes. All customers living in areas with the same zip code have the same socio-demographic attributes. Variable 86 (Purchase) is the target/response variable, indicating whether the customer purchased a caravan insurance policy. Further information on the individual variables can be obtained at http://www.liacs.nl/~putten/library/cc2000/data.html
+
+Fit the models on the training set (as the split shown at the bottom codes) and to evaluate their performance on the test set. Use the R lab codes. Feel free to use other packs (caret) and k-fold methods if you like.
+
+
+***
+## Q1) (*Modeling*) 
+
+a. Create a training set consisting from random 4,000 observations (shuffled and then split) with the seed with `set.seed(99)` and a test set consisting of the remaining observations (see the code at the bottom). Do a brief EDA on the target variable. Overall, describe the data. Do you think a samll number of predictors suffice to get the good results?
+
+b. Fit a `logistic regression` to the training set with `Purchase` as the response and all the other variables as predictors. Report the $Accuracy$ score on the train and test data sets. Discuss if any issues observed.
+
+c. Fit a `classification tree` model to the training set with `Purchase` as the response and all the other variables as predictors. Use cross-validation `cv.tree()` in order to determine the optimal level of tree complexity and prune the tree. Then, report the $Accuracy$ score on the train and test data sets. If the R command gives errors, make necessary fixes to run the model. Discuss if any issues observed.
+
+d. Use the `bagging approach` on the classification trees model to the training set with `Purchase` as the response and all the other variables as predictors. Report the $Accuracy$ score on the train and test data sets. Discuss if any issues observed.
+
+e. Use the `random forests` on the classification trees model to the training set with `Purchase` as the response and all the other variables as predictors. Find the optimal `mtry` and `ntree` with a sophisticated choice (no mandatory to make cross-validation, just try some) and report these. Report the $Accuracy$ score on the train and test data sets. Discuss if any issues observed.
+
+
+f. Perform `boosting` on the training set with `Purchase` as the response and all the other variables as predictors. Find the optimal `shrinkage` value and `ntree` with a sophisticated choice (no mandatory to make cross-validation, just try some) and report these. Report the $Accuracy$ score on the train and test data sets. Discuss if any issues observed.
+
+
+***
+## Q2) (*Discussion and Evaluation*) 
+
+a. Overall, compare the five models (parts b-f) in Question#1. Which one is the best  in terms of $Accuracy$? Also, what fraction of the people predicted to make a purchase do in fact make one for on each model (use test data, what is called this score?)? Accuracy or this score: which one do you prefer to evaluate models? 
+
+b. Determine which four features/predictors are the most important in the `random forests` and `boosting` models fitted. Include graphs and comments. Are they same features? Why? 
+
+c. Joe claimed that his model accuracy on the prediction for the same problem is 94%. Do you think this is a good model? Explain.
+
+d. (BONUS) How to deal with `imbalanced data` in modeling? Include your solution and one of model's test result to handle this issue. Did it improve?
+
+e. (BONUS) What happens to the results if you scale the features? Discuss.
+
+\newpage
+
+***
+
+## Your Solutions
+
+Q1) 
+```{r}
+#import packs and dataset
+library(ISLR)
+library(MASS)
+library(class)
+library(kableExtra)
+library(caret)
+library(car)
+library(tree)
+library(randomForest)
+library(gbm)
+```
+
+```{r}
+#EDA
+#attach(Caravan)
+#detach(Caravan)
+#View(Caravan)
+#dim(Caravan) #5822x86
+#colnames(Caravan)
+#str(Caravan)
+#summary(Caravan)
+```
+
+Part a:
+```{r}
+#EDA on target variable
+
+#Caravan$Purchase
+table(Caravan$Purchase)
+#imbalanced data issue AND sparsity
+prop.table(table(Caravan$Purchase))
+```
+I think we might have problems with predicting yes's. When there is such an unbalanced number of one type of classification, we will always be very bad at predicting the less frequent classification unless the less frequent classification observations are similar (share a similar space/pocket in the data space). Our decision trees will be very poor because the small pockets of the data space in our decision trees based off the training data are very unlikely to share the same pockets that we might find the less frequent classification observations in the testing data.
+
+
+```{r}
+#recode the target variable: you will need one of them for models, just aware
+Caravan$Purchase = ifelse(Caravan$Purchase == "Yes", 1, 0)
+#Caravan$Purchase = ifelse(Caravan$Purchase == 1, "Yes", "No")
+#Caravan$Purchase
+```
+
+```{r}
+#shuffle, split train and test
+set.seed(99)
+rows <- sample(nrow(Caravan))
+train = rows[1:4000] #1:4000
+#split
+Caravan.train = Caravan[train, ]
+#train target
+table(Caravan.train$Purchase)
+#split
+Caravan.test = Caravan[-train, ]
+#test target
+table(Caravan.test$Purchase)
+#dims
+dim(Caravan.train) #4000x86
+dim(Caravan.test) #1822x86
+```
+
+```{r, include=FALSE}
+# #if needed, apply scale (min-max would be preferred) except for the target and categoricals
+# #just to show: ?scale
+# #then bring back the target variable located at 86th column
+# Caravan_sc1=scale(Caravan[,-86])
+# summary(Caravan_sc1)
+# #min-max scaling on numerical and dummies
+# normalize <- function(x){
+#     return((x - min(x)) /(max(x)-min(x)))
+# }
+# Caravan_sc2=as.data.frame(apply(Caravan[,1:85],2, FUN=normalize))
+# summary(Caravan_sc2)
+# #if want to replace the original features with scaled ones
+# Caravan[,1:85] = Caravan_sc2
+# summary(Caravan)
+```
+
+***
+Part b:
+```{r}
+log.reg = glm(Purchase ~., family=binomial, data=Caravan.train)
+#removing AZEILPL because there is perfect multicollinearity present
+```
+
+```{r}
+log.reg = glm(Purchase ~.-AZEILPL, family=binomial, data=Caravan.train)
+round(vif(log.reg),4)
+```
+Some of these values are greater than 100000! I believe we should remove some of the variables because of multicollinearity concerns. However, I will follow what the assignment says and include the full model. However, I will include a model that has less multicollinearity concerns (All VIF values are less than 10). At the end, I'll briefly compare the two regressions.
+
+```{r}
+log.reg.VIF = glm(Purchase ~.-AZEILPL-MHKOOP-MZFONDS-PGEZONG-PBESAUT-PINBOED-MOSTYPE-PVRAAUT-PWERKT-PWAPART-MOPLLAAG-MFWEKIND-PBROM-MRELGE-PMOTSCO-PWALAND-AAANHANG-PTRACTOR-MAUT1-AWAOREG-ABYSTAND-MSKA-MGODPR-MINKM30-MBERMIDD-AFIETS-APLEZIER, family=binomial, data=Caravan.train)
+round(vif(log.reg.VIF),4)
+#Largest VIF value here is slightly larger than 6
+```
+
+```{r}
+#summary(log.reg)
+lr.probs.tr=predict(log.reg,Caravan.train,type="response")
+lr.pred.tr=rep(0,nrow(Caravan.train))
+lr.pred.tr[lr.probs.tr>.5]=1
+lr.train.error = mean(lr.pred.tr!=Caravan.train$Purchase)
+lr.probs.test=predict(log.reg,Caravan.test,type="response")
+lr.pred.test=rep(0,nrow(Caravan.test))
+lr.pred.test[lr.probs.test>.5]=1
+lr.test.error = mean(lr.pred.test!=Caravan.test$Purchase)
+```
+
+```{r, echo=FALSE}
+cat("Logistic Regression Train Error: ",lr.train.error,"\n")
+cat("Logistic Regression Test Error: ",lr.test.error,"\n")
+```
+
+```{r}
+lr.cm = table(Caravan.test$Purchase, lr.pred.test)
+lr.cm
+lr.accuracy = (lr.cm[1,1] + lr.cm[2,2]) / (length(Caravan.test$Purchase))
+```
+
+```{r, echo=FALSE}
+cat("Logistic Accuracy: ",lr.accuracy,"\n")
+```
+
+```{r}
+#summary(log.reg)
+lr.probs.tr2=predict(log.reg.VIF,Caravan.train,type="response")
+lr.pred.tr2=rep(0,nrow(Caravan.train))
+lr.pred.tr2[lr.probs.tr2>.5]=1
+lr.train.error2 = mean(lr.pred.tr2!=Caravan.train$Purchase)
+lr.probs.test2=predict(log.reg.VIF,Caravan.test,type="response")
+lr.pred.test2=rep(0,nrow(Caravan.test))
+lr.pred.test2[lr.probs.test2>.5]=1
+lr.test.error2 = mean(lr.pred.test2!=Caravan.test$Purchase)
+```
+
+```{r, echo=FALSE}
+cat("Logistic Regression Train Error: ",lr.train.error2,"\n")
+cat("Logistic Regression Test Error: ",lr.test.error2,"\n")
+```
+
+```{r}
+lr.cm2 = table(Caravan.test$Purchase, lr.pred.test2)
+lr.cm2
+lr.accuracy2 = (lr.cm2[1,1] + lr.cm2[2,2]) / (length(Caravan.test$Purchase))
+```
+
+```{r, echo=FALSE}
+cat("Logistic Accuracy: ",lr.accuracy2,"\n")
+```
+
+```{r}
+b1.table = matrix(c((1-lr.train.error), (1-lr.train.error2), lr.accuracy, lr.accuracy2), nrow = 2)
+rownames(b1.table) = c("Full Logistic Regression","Reduced Logistic Regression")
+colnames(b1.table) = c("Train Accuracy", "Test Accuracy")
+kable(b1.table, caption = "Performance Checks for the Models") %>%
+  kable_styling(latex_options = "hold_position")
+```
+
+```{r, echo=FALSE}
+b1.table2 = matrix(c(lr.cm[1,1], lr.cm2[1,1], lr.cm[2,2], lr.cm2[2,2], lr.cm[1,2], lr.cm2[1,2], lr.cm[2,1], lr.cm2[2,1]), nrow =2)
+rownames(b1.table2) = c("Full Logistic Regression","Reduced Logistic Regression")
+
+kable(b1.table2, caption = "Test Set Classifications", col.names = c("Correctly Classified No's","Correctly Classified Yes's","Incorrectly Classified No's","Incorrectly Classified Yes's")) %>%
+  column_spec(1:5, width = "2.25cm") %>%
+  kable_styling(latex_options = "hold_position", font_size = 7)
+```
+
+The two models actually almost had the exact same performance scores. Both models had the same overall accuracy, however, the full logistic regression was able to correctly classify a yes in the test set unlike the reduced logistic regression. These small differences could just amount to chance and the distributions of the data fitting a particular way. Overall, the two models performed incredibly similar. I will do the same comparison of models (full vs reduced) for the following parts.
+
+***
+Part c:
+```{r}
+Caravan.train$Purchase = factor(ifelse(Caravan.train$Purchase == 1, "Yes", "No"))
+Caravan.test$Purchase = factor(ifelse(Caravan.test$Purchase == 1, "Yes", "No"))
+```
+
+```{r}
+tree.caravan=tree(Purchase~., data=Caravan.train)
+```
+
+```{r}
+tree.caravan.VIF=tree(Purchase~.-AZEILPL-MHKOOP-MZFONDS-PGEZONG-PBESAUT-PINBOED-MOSTYPE-PVRAAUT-PWERKT-PWAPART-MOPLLAAG-MFWEKIND-PBROM-MRELGE-PMOTSCO-PWALAND-AAANHANG-PTRACTOR-MAUT1-AWAOREG-ABYSTAND-MSKA-MGODPR-MINKM30-MBERMIDD-AFIETS-APLEZIER, data=Caravan.train)
+```
+
+```{r}
+set.seed(99)
+cv.caravan=cv.tree(tree.caravan,FUN=prune.misclass) #change to prune.misclass?
+```
+
+```{r}
+set.seed(99)
+cv.caravan.VIF=cv.tree(tree.caravan.VIF,FUN=prune.misclass) #change to prune.misclass?
+```
+
+```{r}
+par(mfrow=c(2,2))
+#Full Model CV Plots
+plot(cv.caravan$size,cv.caravan$dev,type="b", main = "Full Model CV Plot")
+plot(cv.caravan$k,cv.caravan$dev,type="b", main = "Full Model CV Plot")
+#Reduced Model CV Plots
+plot(cv.caravan.VIF$size,cv.caravan.VIF$dev,type="b", main = "Reduced Model CV Plot")
+plot(cv.caravan.VIF$k,cv.caravan.VIF$dev,type="b", main = "Reduced Model CV Plot")
+```
+We can see here, running Cross Validation on the reduced model was more enlightening than on the full model. The smallest and largest classification tree for the full model was 4 terminal nodes. The reduced model was a bit more interesting, and I will show the two different pruned models of (best = 4, and best = 6).
+
+```{r}
+prune.caravan=prune.misclass(tree.caravan,best=4)
+plot(prune.caravan, )
+text(prune.caravan,pretty=0)
+title("Full Model Tree")
+```
+This is what I was concerned about. Our Full Model Classification Tree classifies everything as No. This actually makes a lot of sense. We saw our logistic regressions had more incorrect classifications of Yes than correct classifications of Yes. When this occurs, predicting everything as No will in fact produce a higher accuracy than attempting to predict something as Yes. Given our data, it is so difficult to predict yes because its either hidden with a bunch of No's or the distribution of Yes's is so scattered that it's impossible to narrow in on a set data space where there will be correct classifications of Yes. So this decision tree actually produces the highest accuracy of any model we can find, even though every terminal node is classified as a No.
+
+```{r}
+par(mfrow=c(1,2))
+prune.caravan.VIF=prune.misclass(tree.caravan.VIF,best=4)
+plot(prune.caravan.VIF)
+text(prune.caravan.VIF,pretty=0, cex = 0.75)
+title("Reduced Model Tree (4 Node)")
+
+prune.caravan.VIF2=prune.misclass(tree.caravan.VIF,best=6)
+plot(prune.caravan.VIF2)
+text(prune.caravan.VIF2,pretty=0, cex = 0.5)
+title("Reduced Model Tree (6 Node)")
+```
+These two different classification trees of the reduced model actually classify every observation the exact same. The area where it classifies the yes's is when PPSERSAUT > 5.5, MKOOPKLA < 5.5, and PPLEZIER > 0.5. 
+
+```{r, eval=FALSE}
+#For the written version of the decision tree
+prune.caravan #Full Model
+prune.caravan.VIF #Simplest and Best Reduced Model (4 nodes)
+```
+
+```{r}
+tree.pred.tr=predict(prune.caravan,Caravan.train,type="class")
+tree.cm.tr = table(Caravan.train$Purchase,tree.pred.tr)
+
+tree.accuracy.tr = (tree.cm.tr[1,1] + tree.cm.tr[2,2]) / (length(Caravan.train$Purchase))
+cat("Classification Tree Train Accuracy: ",tree.accuracy.tr,"\n")
+
+tree.pred.ts=predict(prune.caravan,Caravan.test,type="class")
+tree.cm.ts = table(Caravan.test$Purchase,tree.pred.ts)
+tree.cm.ts
+
+tree.accuracy.ts = (tree.cm.ts[1,1] + tree.cm.ts[2,2]) / (length(Caravan.test$Purchase))
+cat("Classification Tree Test Accuracy: ",tree.accuracy.ts,"\n")
+```
+
+```{r}
+tree.pred.VIF.tr=predict(prune.caravan.VIF,Caravan.train,type="class")
+tree.cm.VIF.tr = table(Caravan.train$Purchase,tree.pred.VIF.tr)
+
+tree.accuracy.VIF.tr = (tree.cm.VIF.tr[1,1] + tree.cm.VIF.tr[2,2]) / (length(Caravan.train$Purchase))
+cat("Classification Tree Train Accuracy: ",tree.accuracy.VIF.tr,"\n")
+
+tree.pred.VIF.ts=predict(prune.caravan.VIF,Caravan.test,type="class")
+tree.cm.VIF.ts = table(Caravan.test$Purchase,tree.pred.VIF.ts)
+tree.cm.VIF.ts
+
+tree.accuracy.VIF.ts = (tree.cm.VIF.ts[1,1] + tree.cm.VIF.ts[2,2]) / (length(Caravan.test$Purchase))
+cat("Classification Tree Test Accuracy: ",tree.accuracy.VIF.ts,"\n")
+```
+
+```{r}
+c1.table = matrix(c(tree.accuracy.tr, tree.accuracy.VIF.tr, tree.accuracy.ts, tree.accuracy.VIF.ts), nrow = 2)
+rownames(c1.table) = c("Full Model","Reduced Model")
+colnames(c1.table) = c("Train Accuracy", "Test Accuracy")
+kable(c1.table, caption = "Performance Checks for the Models") %>%
+  kable_styling(latex_options = "hold_position")
+```
+
+```{r, echo=FALSE}
+c1.table2 = matrix(c(tree.cm.ts[1,1], tree.cm.VIF.ts[1,1], tree.cm.ts[2,2], tree.cm.VIF.ts[2,2], tree.cm.ts[1,2], tree.cm.VIF.ts[1,2], tree.cm.ts[2,1], tree.cm.VIF.ts[2,1]), nrow =2)
+rownames(c1.table2) = c("Full Model","Reduced Model")
+
+kable(c1.table2, caption = "Test Set Classifications", col.names = c("Correctly Classified No's","Correctly Classified Yes's","Incorrectly Classified No's","Incorrectly Classified Yes's")) %>%
+  column_spec(1:5, width = "2.25cm") %>%
+  kable_styling(latex_options = "hold_position", font_size = 7)
+```
+As we can see from the tables, the full model has a slightly worse train accuracy, but a better test accuracy than the reduced model. These differences are 2 misclassifications different so these results could certainly be different with different train and test samples. The important thing to take away from this is that the full model classifies everything as No and the reduced model classifies some observations as Yes. This makes sense based on our previous assertions. Because the observations that are classified as Yes are so infrequent, there isn't really a clear way to predict them in our data space that is easily replicated in the test data. If we predict a space in the data space from our train data to classify those observations as Yes, the likelihood we will find Yes's in that same data space for our test data is relatively low. That is why when we predict Yes to happen in our reduced model, it fits better to the train data slightly, but then has slightly more misclassifications in the test data. However, if we were going for as many true classifications as possible instead of overall accuracy, the reduced model would be preferred.
+
+***
+Part d:
+```{r}
+set.seed(99)
+bag.caravan=randomForest(Purchase~.,data=Caravan.train, mtry = 85, ntree=750, importance = TRUE)
+```
+
+```{r}
+#bag.caravan$confusion[,c(-3)]
+bag.pred.tr = predict(bag.caravan, Caravan.train, type="class")
+bag.cm.tr = table(Caravan.train$Purchase, bag.pred.tr)
+
+bag.accuracy.tr = (bag.cm.tr[1,1] + bag.cm.tr[2,2]) / (length(Caravan.train$Purchase))
+cat("Tree Train Accuracy - Bagging: ",bag.accuracy.tr,"\n")
+
+#bag.caravan$importance
+bag.pred.ts=predict(bag.caravan,Caravan.test,type="class")
+bag.cm.ts = table(Caravan.test$Purchase, bag.pred.ts)
+bag.cm.ts
+
+bag.accuracy.ts = (bag.cm.ts[1,1] + bag.cm.ts[2,2]) / (length(Caravan.test$Purchase))
+cat("Tree Test Accuracy - Bagging: ",bag.accuracy.ts,"\n")
+```
+
+```{r}
+set.seed(99)
+bag.caravan.VIF=randomForest(Purchase~.-AZEILPL-MHKOOP-MZFONDS-PGEZONG-PBESAUT-PINBOED-MOSTYPE-PVRAAUT-PWERKT-PWAPART-MOPLLAAG-MFWEKIND-PBROM-MRELGE-PMOTSCO-PWALAND-AAANHANG-PTRACTOR-MAUT1-AWAOREG-ABYSTAND-MSKA-MGODPR-MINKM30-MBERMIDD-AFIETS-APLEZIER,data=Caravan.train, mtry = 58, ntree = 750, importance = TRUE)
+```
+
+```{r}
+#bag.caravan.VIF$confusion
+bag.pred.VIF.tr=predict(bag.caravan.VIF,Caravan.train,type="class")
+bag.cm.VIF.tr = table(Caravan.train$Purchase,bag.pred.VIF.tr)
+
+bag.accuracy.VIF.tr = (bag.cm.VIF.tr[1,1] + bag.cm.VIF.tr[2,2]) / (length(Caravan.train$Purchase))
+cat("Tree Train Accuracy - Bagging: ",bag.accuracy.VIF.tr,"\n")
+
+#bag.caravan$importance
+bag.pred.VIF.ts=predict(bag.caravan.VIF,Caravan.test,type="class")
+bag.cm.VIF.ts = table(Caravan.test$Purchase,bag.pred.VIF.ts)
+bag.cm.VIF.ts
+
+bag.accuracy.VIF.ts = (bag.cm.VIF.ts[1,1] + bag.cm.VIF.ts[2,2]) / (length(Caravan.test$Purchase))
+cat("Tree Test Accuracy - Bagging: ",bag.accuracy.VIF.ts,"\n")
+```
+
+```{r}
+d1.table = matrix(c(bag.accuracy.tr, bag.accuracy.VIF.tr, bag.accuracy.ts, bag.accuracy.VIF.ts), nrow = 2)
+rownames(d1.table) = c("Full Model","Reduced Model")
+colnames(d1.table) = c("Train Accuracy", "Test Accuracy")
+kable(d1.table, caption = "Performance Checks for the Models - Bagging Approach") %>%
+  kable_styling(latex_options = "hold_position")
+```
+
+```{r, echo=FALSE}
+d1.table2 = matrix(c(bag.cm.ts[1,1], bag.cm.VIF.ts[1,1], bag.cm.ts[2,2], bag.cm.VIF.ts[2,2], bag.cm.ts[1,2], bag.cm.VIF.ts[1,2], bag.cm.ts[2,1], bag.cm.VIF.ts[2,1]), nrow =2)
+rownames(d1.table2) = c("Full Model","Reduced Model")
+
+kable(d1.table2, caption = "Test Set Classifications - Bagging Approach", col.names = c("Correctly Classified No's","Correctly Classified Yes's","Incorrectly Classified No's","Incorrectly Classified Yes's")) %>%
+  column_spec(1:5, width = "2.25cm") %>%
+  kable_styling(latex_options = "hold_position", font_size = 7)
+```
+
+This methods train accuracy was much higher than previous methods. Using the OOB method probably helped greatly with this. However, our test accuracy is still lower than what we want to see. It seems that when train accuracy is higher, test accuracy is lower. This might mean that we are potentially overfitting the train data set in our models. The amount of overfitting that we are doing though is not very severe, but it is noticeable.
+
+***
+Part e:
+```{r}
+set.seed(99)
+forest.caravan=randomForest(Purchase~.,data=Caravan.train, ntree = 750)
+```
+
+```{r}
+#forest.caravan$confusion
+forest.pred.tr=predict(forest.caravan,Caravan.train,type="class")
+forest.cm.tr = table(Caravan.train$Purchase,forest.pred.tr)
+
+forest.accuracy.tr = (forest.cm.tr[1,1] + forest.cm.tr[2,2]) / (length(Caravan.train$Purchase))
+cat("Tree Train Accuracy - Random Forest: ",forest.accuracy.tr,"\n")
+
+forest.pred.ts=predict(forest.caravan,Caravan.test,type="class")
+forest.cm.ts = table(Caravan.test$Purchase,forest.pred.ts)
+forest.cm.ts
+
+forest.accuracy.ts = (forest.cm.ts[1,1] + forest.cm.ts[2,2]) / (length(Caravan.test$Purchase))
+cat("Tree Test Accuracy - Random Forest: ",forest.accuracy.ts,"\n")
+```
+
+
+```{r}
+set.seed(99)
+forest.caravan.VIF=randomForest(Purchase~.-AZEILPL-MHKOOP-MZFONDS-PGEZONG-PBESAUT-PINBOED-MOSTYPE-PVRAAUT-PWERKT-PWAPART-MOPLLAAG-MFWEKIND-PBROM-MRELGE-PMOTSCO-PWALAND-AAANHANG-PTRACTOR-MAUT1-AWAOREG-ABYSTAND-MSKA-MGODPR-MINKM30-MBERMIDD-AFIETS-APLEZIER,data=Caravan.train, ntree = 750)
+```
+
+```{r}
+#forest.caravan$confusion
+forest.pred.VIF.tr=predict(forest.caravan.VIF,Caravan.train,type="class")
+forest.cm.VIF.tr = table(Caravan.train$Purchase,forest.pred.VIF.tr)
+
+forest.accuracy.VIF.tr = (forest.cm.VIF.tr[1,1] + forest.cm.VIF.tr[2,2]) / (length(Caravan.train$Purchase))
+cat("Tree Train Accuracy - Random Forest: ",forest.accuracy.VIF.tr,"\n")
+
+forest.pred.VIF.ts=predict(forest.caravan.VIF,Caravan.test,type="class")
+forest.cm.VIF.ts = table(Caravan.test$Purchase,forest.pred.VIF.ts)
+forest.cm.VIF.ts
+
+forest.accuracy.VIF.ts = (forest.cm.VIF.ts[1,1] + forest.cm.VIF.ts[2,2]) / (length(Caravan.test$Purchase))
+cat("Tree Test Accuracy - Random Forest: ",forest.accuracy.VIF.ts,"\n")
+```
+
+```{r}
+e1.table = matrix(c(forest.accuracy.tr, forest.accuracy.VIF.tr, forest.accuracy.ts, forest.accuracy.VIF.ts), nrow = 2)
+rownames(e1.table) = c("Full Model","Reduced Model")
+colnames(e1.table) = c("Train Accuracy", "Test Accuracy")
+kable(e1.table, caption = "Performance Checks for the Models - Random Forests") %>%
+  kable_styling(latex_options = "hold_position")
+```
+
+```{r, echo=FALSE}
+e1.table2 = matrix(c(forest.cm.ts[1,1], forest.cm.VIF.ts[1,1], forest.cm.ts[2,2], forest.cm.VIF.ts[2,2], forest.cm.ts[1,2], forest.cm.VIF.ts[1,2], forest.cm.ts[2,1], forest.cm.VIF.ts[2,1]), nrow =2)
+rownames(e1.table2) = c("Full Model","Reduced Model")
+
+kable(e1.table2, caption = "Test Set Classifications - Random Forests", col.names = c("Correctly Classified No's","Correctly Classified Yes's","Incorrectly Classified No's","Incorrectly Classified Yes's")) %>%
+  column_spec(1:5, width = "2.25cm") %>%
+  kable_styling(latex_options = "hold_position", font_size = 7)
+```
+
+For optimal mtry values, we chose mtry = $\sqrt{p}$, with p = # of predictors because that is what the book recommends. For ntree, we chose 750 because the error estimates seemed to converge at around this number. The train accuracy measurements for random forests were slightly lower than the train accuracy measurements for bagging, but the test accuracy for random forests was slightly higher than the test accuracy for bagging. This further shows that these tree methods are overfitting the training data. Another thing to note is the bagging method was able to correctly classify more Yes's than the random forests method.
+
+***
+Part f:
+```{r}
+Caravan.train$Purchase = ifelse(Caravan.train$Purchase == "Yes", 1, 0)
+Caravan.test$Purchase = ifelse(Caravan.test$Purchase == "Yes", 1, 0)
+```
+
+
+```{r}
+boost.caravan=gbm(Purchase~.,data=Caravan.train,
+                 distribution="bernoulli",
+                 n.trees=5000,
+                 interaction.depth=4,
+                 shrinkage=0.01,
+                 cv.folds = 5,
+                 verbose=F)
+head(summary(boost.caravan),10)
+```
+
+```{r}
+boost.probs.tr = predict.gbm(boost.caravan, newdata=Caravan.train, n.trees = boost.caravan$n.trees, type = "response")
+boost.probs.tr = as.matrix(boost.probs.tr)
+boost.pred.tr <- ifelse(boost.probs.tr > 0.5, 1, 0)
+
+boost.cm.tr = table(Caravan.train$Purchase,boost.pred.tr)
+
+boost.accuracy.tr = (boost.cm.tr[1,1] + boost.cm.tr[2,2]) / (length(Caravan.train$Purchase))
+cat("Tree Train Accuracy - Boosting: ",boost.accuracy.tr,"\n")
+
+boost.probs.ts = predict.gbm(boost.caravan, newdata=Caravan.test, n.trees = boost.caravan$n.trees, type = "response")
+boost.probs.ts = as.matrix(boost.probs.ts)
+boost.pred.ts <- ifelse(boost.probs.ts > 0.5, 1, 0)
+
+boost.cm.ts = table(Caravan.test$Purchase,boost.pred.ts)
+boost.cm.ts
+
+boost.accuracy.ts = (boost.cm.ts[1,1] + boost.cm.ts[2,2]) / (length(Caravan.test$Purchase))
+cat("Tree Test Accuracy - Boosting: ",boost.accuracy.ts,"\n")
+```
+
+```{r}
+best.iter = gbm.perf(boost.caravan, method = "cv")
+```
+
+```{r}
+boost.probs.iter.tr = predict.gbm(boost.caravan, newdata=Caravan.train, n.trees = best.iter, type = "response")
+boost.probs.iter.tr = as.matrix(boost.probs.iter.tr)
+boost.pred.iter.tr <- ifelse(boost.probs.iter.tr > 0.5, 1, 0)
+
+boost.cm.iter.tr = table(Caravan.train$Purchase,boost.pred.iter.tr)
+
+boost.accuracy.iter.tr <- ifelse(length(boost.cm.iter.tr) == 4, 
+       (boost.cm.iter.tr[1,1] + boost.cm.iter.tr[2,2]) / (length(Caravan.train$Purchase)),
+       boost.cm.iter.tr[1,1] / (length(Caravan.train$Purchase)))
+
+cat("Tree Train Accuracy - Boosting: ",boost.accuracy.iter.tr,"\n")
+
+
+boost.probs.iter.ts = predict.gbm(boost.caravan, newdata=Caravan.test, n.trees = best.iter, type = "response")
+boost.probs.iter.ts = as.matrix(boost.probs.iter.ts)
+boost.pred.iter.ts <- ifelse(boost.probs.iter.ts > 0.5, 1, 0)
+
+boost.cm.iter.ts = table(Caravan.test$Purchase,boost.pred.iter.ts)
+boost.cm.iter.ts
+
+boost.accuracy.iter.ts <- ifelse(length(boost.cm.iter.ts) == 4, 
+       (boost.cm.iter.ts[1,1] + boost.cm.iter.ts[2,2]) / (length(Caravan.test$Purchase)),
+       boost.cm.iter.ts[1,1] / (length(Caravan.test$Purchase)))
+
+cat("Tree Test Accuracy - Boosting: ",boost.accuracy.iter.ts,"\n")
+```
+
+
+```{r}
+boost.caravan2=gbm(Purchase~.,data=Caravan.train,
+                 distribution="bernoulli",
+                 n.trees=7500,
+                 interaction.depth=4,
+                 shrinkage=0.01,
+                 cv.folds = 5,
+                 verbose=F)
+head(summary(boost.caravan2),10)
+```
+
+```{r}
+boost.probs.tr2 = predict.gbm(boost.caravan2, newdata=Caravan.train, n.trees = boost.caravan2$n.trees, type = "response")
+boost.probs.tr2 = as.matrix(boost.probs.tr2)
+boost.pred.tr2 <- ifelse(boost.probs.tr2 > 0.5, 1, 0)
+
+boost.cm.tr2 = table(Caravan.train$Purchase,boost.pred.tr2)
+
+boost.accuracy.tr2 = (boost.cm.tr2[1,1] + boost.cm.tr2[2,2]) / (length(Caravan.train$Purchase))
+cat("Tree Train Accuracy - Boosting: ",boost.accuracy.tr2,"\n")
+
+boost.probs.ts2 = predict.gbm(boost.caravan2, newdata=Caravan.test, n.trees = boost.caravan$n.trees, type = "response")
+boost.probs.ts2 = as.matrix(boost.probs.ts2)
+boost.pred.ts2 <- ifelse(boost.probs.ts2 > 0.5, 1, 0)
+
+boost.cm.ts2 = table(Caravan.test$Purchase,boost.pred.ts2)
+boost.cm.ts2
+
+boost.accuracy.ts2 = (boost.cm.ts2[1,1] + boost.cm.ts2[2,2]) / (length(Caravan.test$Purchase))
+cat("Tree Test Accuracy - Boosting: ",boost.accuracy.ts2,"\n")
+```
+
+```{r}
+best.iter2 = gbm.perf(boost.caravan2, method = "cv")
+```
+
+```{r}
+boost.probs.iter.tr2 = predict.gbm(boost.caravan2, newdata=Caravan.train, n.trees = best.iter2, type = "response")
+boost.probs.iter.tr2 = as.matrix(boost.probs.iter.tr2)
+boost.pred.iter.tr2 <- ifelse(boost.probs.iter.tr2 > 0.5, 1, 0)
+
+boost.cm.iter.tr2 = table(Caravan.train$Purchase,boost.pred.iter.tr2)
+
+boost.accuracy.iter.tr2 <- ifelse(length(boost.cm.iter.tr2) == 4, 
+       (boost.cm.iter.tr2[1,1] + boost.cm.iter.tr2[2,2]) / (length(Caravan.train$Purchase)),
+       boost.cm.iter.tr2[1,1] / (length(Caravan.train$Purchase)))
+
+cat("Tree Train Accuracy - Boosting: ",boost.accuracy.iter.tr2,"\n")
+
+
+boost.probs.iter.ts2 = predict.gbm(boost.caravan2, newdata=Caravan.test, n.trees = best.iter2, type = "response")
+boost.probs.iter.ts2 = as.matrix(boost.probs.iter.ts2)
+boost.pred.iter.ts2 <- ifelse(boost.probs.iter.ts2 > 0.5, 1, 0)
+
+boost.cm.iter.ts2 = table(Caravan.test$Purchase,boost.pred.iter.ts2)
+boost.cm.iter.ts2
+
+boost.accuracy.iter.ts2 <- ifelse(length(boost.cm.iter.ts2) == 4, 
+       (boost.cm.iter.ts2[1,1] + boost.cm.iter.ts2[2,2]) / (length(Caravan.test$Purchase)),
+       boost.cm.iter.ts2[1,1] / (length(Caravan.test$Purchase)))
+
+cat("Tree Test Accuracy - Boosting: ",boost.accuracy.iter.ts2,"\n")
+```
+
+```{r}
+boost.caravan3=gbm(Purchase~.,data=Caravan.train,
+                 distribution="bernoulli",
+                 n.trees=10000,
+                 interaction.depth=3,
+                 shrinkage=0.001,
+                 cv.folds = 5,
+                 verbose=F)
+head(summary(boost.caravan3),10)
+```
+
+```{r}
+boost.probs.tr3 = predict.gbm(boost.caravan3, newdata=Caravan.train, n.trees = boost.caravan$n.trees, type = "response")
+boost.probs.tr3 = as.matrix(boost.probs.tr3)
+boost.pred.tr3 <- ifelse(boost.probs.tr3 > 0.5, 1, 0)
+
+boost.cm.tr3 = table(Caravan.train$Purchase,boost.pred.tr3)
+
+boost.accuracy.tr3 = (boost.cm.tr3[1,1] + boost.cm.tr3[2,2]) / (length(Caravan.train$Purchase))
+cat("Tree Train Accuracy - Boosting: ",boost.accuracy.tr3,"\n")
+
+boost.probs.ts3 = predict.gbm(boost.caravan3, newdata=Caravan.test, n.trees = boost.caravan$n.trees, type = "response")
+boost.probs.ts3 = as.matrix(boost.probs.ts3)
+boost.pred.ts3 <- ifelse(boost.probs.ts3 > 0.5, 1, 0)
+
+boost.cm.ts3 = table(Caravan.test$Purchase,boost.pred.ts3)
+boost.cm.ts3
+
+boost.accuracy.ts3 = (boost.cm.ts3[1,1] + boost.cm.ts3[2,2]) / (length(Caravan.test$Purchase))
+cat("Tree Test Accuracy - Boosting: ",boost.accuracy.ts3,"\n")
+```
+
+```{r}
+best.iter3 = gbm.perf(boost.caravan, method = "cv")
+```
+
+```{r}
+boost.probs.iter.tr3 = predict.gbm(boost.caravan3, newdata=Caravan.train, n.trees = best.iter3, type = "response")
+boost.probs.iter.tr3 = as.matrix(boost.probs.iter.tr3)
+boost.pred.iter.tr3 <- ifelse(boost.probs.iter.tr3 > 0.5, 1, 0)
+
+boost.cm.iter.tr3 = table(Caravan.train$Purchase,boost.pred.iter.tr3)
+
+boost.accuracy.iter.tr3 <- ifelse(length(boost.cm.iter.tr3) == 4, 
+       (boost.cm.iter.tr3[1,1] + boost.cm.iter.tr3[2,2]) / (length(Caravan.train$Purchase)),
+       boost.cm.iter.tr3[1,1] / (length(Caravan.train$Purchase)))
+
+cat("Tree Train Accuracy - Boosting: ",boost.accuracy.iter.tr3,"\n")
+
+
+boost.probs.iter.ts3 = predict.gbm(boost.caravan3, newdata=Caravan.test, n.trees = best.iter3, type = "response")
+boost.probs.iter.ts3 = as.matrix(boost.probs.iter.ts3)
+boost.pred.iter.ts3 <- ifelse(boost.probs.iter.ts3 > 0.5, 1, 0)
+
+boost.cm.iter.ts3 = table(Caravan.test$Purchase,boost.pred.iter.ts3)
+boost.cm.iter.ts3
+
+boost.accuracy.iter.ts3 <- ifelse(length(boost.cm.iter.ts3) == 4, 
+       (boost.cm.iter.ts3[1,1] + boost.cm.iter.ts3[2,2]) / (length(Caravan.test$Purchase)),
+       boost.cm.iter.ts3[1,1] / (length(Caravan.test$Purchase)))
+cat("Tree Test Accuracy - Boosting: ",boost.accuracy.iter.ts3,"\n")
+```
+
+```{r}
+f1.table = round(matrix(c(boost.accuracy.iter.tr, boost.accuracy.tr, boost.accuracy.iter.tr2, boost.accuracy.tr2, boost.accuracy.iter.tr3, boost.accuracy.tr3, boost.accuracy.iter.ts, boost.accuracy.ts, boost.accuracy.iter.ts2, boost.accuracy.ts2, boost.accuracy.iter.ts3, boost.accuracy.ts3), ncol = 2),4)
+
+rownames(f1.table) = c(paste("Best Iteration |",as.character(best.iter),"trees"), "Final Iteration (5000 trees)",paste("Best Iteration |",as.character(best.iter2),"trees"), "Final Iteration (7500 trees)",paste("Best Iteration |",as.character(best.iter3),"trees"), "Final Iteration (10000 trees)")
+
+colnames(f1.table) = c("Train Accuracy", "Test Accuracy")
+kable(f1.table, caption = "Performance Checks for the Models - Random Forests") %>%
+  kable_styling(latex_options = "hold_position") %>%
+  pack_rows("(trees=5000 / depth=4 / shrinkage=0.01) model",1,2) %>%
+  pack_rows("(trees=7500 / depth=4 / shrinkage=0.01) model",3,4) %>%
+  pack_rows("(trees=10000 / depth=3 / shrinkage=0.001) model",5,6)
+
+```
+Considering we are going by accuracy, the best model was the best iteration of the n.trees=10000 / iteration.depth = 3, shrinkage value = 0.001 model that went to the best iteration. The only reason I include the other two models is because they have better precision scores, which I believe is a more important statistics to base our models on. This will be expanded on in question 2.
+
+***
+
+
+\newpage
+
+## Q2) 
+
+Part a:
+```{r}
+#If you want to see the table of just accuracy
+a2.table = matrix(c((1710/1822),lr.accuracy, tree.accuracy.ts,bag.accuracy.ts, forest.accuracy.ts, boost.accuracy.ts, boost.accuracy.ts2, boost.accuracy.ts3,(1710/1822), lr.accuracy2, tree.accuracy.VIF.ts,bag.accuracy.VIF.ts, forest.accuracy.VIF.ts, boost.accuracy.iter.ts, boost.accuracy.iter.ts2, boost.accuracy.iter.ts3), ncol = 2)
+```
+
+```{r, eval=FALSE}
+rownames(a2.table) = c("Guess No Every Time","Logistic Regression", "Classification Tree", "Bagging Approach", "Random Forests","Boosted Model 1","Boosted Model 2", "Boosted Model 3")
+colnames(a2.table) = c("Full Models", "Reduced Models")
+kable(a2.table, caption = "Test Accuracy for All Models") %>%
+  kable_styling(c("striped", "hover", "condensed"), latex_options = "hold_position") %>%
+  add_header_above(c(" ", "Test Accuracy"=2))
+```
+
+```{r}
+lr.precision <- lr.cm[2,2] / (lr.cm[2,2] + lr.cm[1,2])
+tree.precision.ts <- tree.cm.ts[2,2] / (tree.cm.ts[2,2] + tree.cm.ts[1,2])
+bag.precision.ts <- bag.cm.ts[2,2] / (bag.cm.ts[2,2] + bag.cm.ts[1,2])
+forest.precision.ts <- forest.cm.ts[2,2] / (forest.cm.ts[2,2] + forest.cm.ts[1,2])
+boost.precision.ts <- boost.cm.ts[2,2] / (boost.cm.ts[2,2] + boost.cm.ts[1,2])
+boost.precision.ts2 <- boost.cm.ts2[2,2] / (boost.cm.ts2[2,2] + boost.cm.ts2[1,2])
+boost.precision.ts3 <- boost.cm.ts3[2,2] / (boost.cm.ts3[2,2] + boost.cm.ts3[1,2])
+lr.precision2 <- lr.cm2[2,2] / (lr.cm2[2,2] + lr.cm2[1,2])
+tree.precision.VIF.ts <- tree.cm.VIF.ts[2,2] / (tree.cm.VIF.ts[2,2] + tree.cm.VIF.ts[1,2])
+bag.precision.VIF.ts <- bag.cm.VIF.ts[2,2] / (bag.cm.VIF.ts[2,2] + bag.cm.VIF.ts[1,2])
+forest.precision.VIF.ts <- forest.cm.VIF.ts[2,2] / (forest.cm.VIF.ts[2,2] + forest.cm.VIF.ts[1,2])
+boost.precision.iter.ts <- boost.cm.iter.ts[2,2] / (boost.cm.iter.ts[2,2] + boost.cm.iter.ts[1,2])
+boost.precision.iter.ts2 <- boost.cm.iter.ts2[2,2] / (boost.cm.iter.ts2[2,2] + boost.cm.iter.ts2[1,2])
+boost.precision.iter.ts3 <- ifelse(length(boost.cm.iter.ts3) == 4, 
+       (boost.cm.iter.ts3[2,2] / (boost.cm.iter.ts3[2,2] + boost.cm.iter.ts3[1,2])), 0/0)
+
+
+precision <- round(matrix(c(0/0, lr.precision, tree.precision.ts,bag.precision.ts, forest.precision.ts, boost.precision.ts, boost.precision.ts2, boost.precision.ts3,(0/0), lr.precision2, tree.precision.VIF.ts,bag.precision.VIF.ts, forest.precision.VIF.ts, boost.precision.iter.ts, boost.precision.iter.ts2, boost.precision.iter.ts3), ncol = 2),4)
+
+a2.table2 <- cbind(a2.table, precision)
+```
+
+```{r}
+rownames(a2.table2) = c("Guess No Everytime","Logistic Regression", "Classification Tree", "Bagging Approach", "Random Forests","Boosted Model 1","Boosted Model 2", "Boosted Model 3")
+colnames(a2.table2) = c("Full Models", "Reduced Models", "Full Models", "Reduced Models")
+kable(a2.table2, caption = "Performance Checks for All Models") %>%
+  kable_styling(c("striped", "hover", "condensed"), latex_options = "hold_position") %>%
+  add_header_above(c(" ", "Test Accuracy"=2, "Test Precision"=2)) %>%
+  footnote(general = "NaN for Test Precision means that the model never predicted a Yes observation")
+```
+
+As we can see, the top models, in terms of accuracy are; Guessing No Every Time, the full model classification tree, and the best iteration # of trees for the boosted model using (n.trees=10000 / iteration.depth = 3, shrinkage value = 0.001). All three of these models classified everything as No. The only way we could have a model better than these is if a model had a precision score greater than 50%. Unfortunately, the highest precision score we have is of the reduced model classification tree at 0.3750. I would say that precision is a better score to evaluate models on because accuracy is incredibly misleading in this case. When we have imbalanced data, I prefer to use the F1 statistic because its a weighted average of precision and recall. If I'm forced to choose between accuracy and precision, I would take precision because in this case, we actually want to know if someone has car insurance so we care more about maximizing true positives than minimizing false positives.
+
+***
+Part b:
+For this question, I will only be comparing the best boosting model to the full random forests model and the two boosting models (n.trees=best.iter, n.trees=full) to each other.
+```{r}
+varImpPlot(forest.caravan)
+forest.vals <- as.data.frame(importance(forest.caravan))
+subset(forest.vals, forest.vals > 10)
+```
+```{r}
+par(mfrow=c(1,2))
+boost.vals <- as.data.frame(summary(boost.caravan3, n.trees = boost.caravan3$n.trees))
+boost.vals <- head(boost.vals['rel.inf'], 4)
+boost.vals.iter <- as.data.frame(summary(boost.caravan3, n.trees = best.iter3))
+boost.vals.iter <- head(boost.vals.iter['rel.inf'], 4)
+
+boost.vals
+boost.vals.iter
+```
+From the boosting models, the one with more trees had lower relative influence values for the most influential variables. For the best iteration tree, because there are so few trees, the relative influence values will have a higher variance in terms of the values themselves and which variables are reported as the most influential. One important thing to note is that because we didn't deal with the massive multicollinearity problem, a lot of variables are interchangeable. It's clear that PBRAND and PPERSAUT are at the top for most influential variables as they showed up in every top 4 influential tests. After those variables, no other variable showed up twice in these tests.
+
+***
+Part c:
+Based on what are results are, it's better than what we are getting. The goal is for our decision trees to produce more true positives than false positives. Doing so would allow us to produce better accuracy measures than models that predict everything negative. 
+```{r,echo=FALSE}
+.94*1822
+#Joe is claiming to get 1712 or 1713 observations correctly classified which will in our case means he is claiming to get 2 or 3 more true positives than false negatives.
+```
+Joe claiming a 94% accuracy rate for the test set means he is obtaining 2 to 3 more true positives than false positives. This is much better than what we have. In the general scheme of things, its not very good because someone with no access to our data and no knowledge of any statistical models could classify every observation as No and still obtain a test accuracy of (~93.8). So to summarize, it's only slightly better than classifying No for every observation, which is slightly better than every model we created that made attempts of classifying observations with the Yes classification. We would hope for Joe and our models to be better at correctly classifying observations with Yes's while not losing too much overall accuracy.
+
+***
+Part d - BONUS:
+
+***
+Part e - BONUS:
+
+***
+\newpage
+
+
+
+### Write comments, questions: ...
+
+
+***
+I hereby write and submit my solutions without violating the academic honesty and integrity. If not, I accept the consequences. 
+
+### List the fiends you worked with (name, last name): ... Avery Girsky
+
+### Disclose the resources or persons if you get any help: ... Lab Code and Previous Assignments
+
+### How long did the assignment solutions take?: ... 14 hours
+
+
+***
+## References
+...
+
+
